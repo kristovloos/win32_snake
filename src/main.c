@@ -104,7 +104,7 @@ void DrawSingleNumber(void *buffer, int bufferWidth, int bufferHeight,
                 
                 FillRectangle(buffer, bufferWidth, bufferHeight,
                               x, y,
-                              digitPixelWidth, digitPixelHeight, 0xFFDDDDDD);
+                              digitPixelWidth, digitPixelHeight, color);
             }
         }
     }
