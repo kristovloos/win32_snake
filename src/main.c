@@ -53,14 +53,14 @@ FillRectangle(void *buffer, int bufferWidth, int bufferHeight,
     
     unsigned int *row = (unsigned int *)buffer + (minX + minY * bufferWidth);
     
-    for(unsigned int y = minY;
-        y < maxY;
+    for(unsigned int by = minY;
+        by < maxY;
         y++)
     {
         unsigned int *pixel = row;
         
-        for(unsigned int x = minX;
-            x < maxX;
+        for(unsigned int bx = minX;
+            bx < maxX;
             x++)
         {
             *pixel++ = color;
