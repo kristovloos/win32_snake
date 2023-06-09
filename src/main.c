@@ -203,8 +203,8 @@ ToggleFullscreen(HWND window)
 
 // Config
 //------------------------------------------------------------------------------
-#define MAP_WIDTH 15
-#define MAP_HEIGHT 15
+#define MAP_WIDTH 64
+#define MAP_HEIGHT 32
 #define MAP_SIZE (MAP_WIDTH * MAP_HEIGHT)
 
 // State
@@ -534,8 +534,15 @@ WinMainCRTStartup(void)
         // Draw Game
         //------------------------------------------------------------------------------
         unsigned int tileSize = screenbuffer.height / state.map.height;
+        
+        if(state.map.width > state.map.height)
+        {
+            tileSize = screenbuffer.width / state.map.width;
+        }
+        
         unsigned int gameWidth = tileSize * state.map.width;
         unsigned int gameHeight = tileSize * state.map.height;
+        
         unsigned int gameOffsetX = (screenbuffer.width - gameWidth) / 2;
         unsigned int gameOffsetY = (screenbuffer.height - gameHeight) / 2;
         
@@ -580,7 +587,7 @@ WinMainCRTStartup(void)
             score %= power;
             power /= 10;
             
-            digitXOffset += digitWidth + 3;
+            digitXOffset += digitWidth + digitWidth / 4;
         }
         
         DisplayScreenBuffer(dc, &screenbuffer);
