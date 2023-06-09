@@ -11,6 +11,91 @@
 #define ArrayCount(a) (sizeof(a) / sizeof(a[0]))
 
 //------------------------------------------------------------------------------
+// Drawing
+//------------------------------------------------------------------------------
+void
+ClearScreenBuffer(void *buffer, int bufferWidth, int bufferHeight, unsigned int color)
+{
+    unsigned int *pixel = (unsigned int *)buffer;
+    unsigned int *end   = pixel + bufferWidth * bufferHeight;
+    
+    while(pixel != end)
+    {
+        *pixel++ = color;
+    }
+}
+
+void
+FillRectangle(void *buffer, int bufferWidth, int bufferHeight, 
+              int x, int y, int w, int h,
+              unsigned int color)
+{
+    unsigned int minX = Clamp(0, x, bufferWidth);
+    unsigned int minY = Clamp(0, y, bufferHeight);
+    unsigned int maxX = Clamp(0, (x + w), bufferWidth);
+    unsigned int maxY = Clamp(0, (y + h), bufferHeight);
+    
+    unsigned int *row = (unsigned int *)buffer + (minX + minY * bufferWidth);
+    
+    for(unsigned int y = minY;
+        y < maxY;
+        y++)
+    {
+        unsigned int *pixel = row;
+        
+        for(unsigned int x = minX;
+            x < maxX;
+            x++)
+        {
+            *pixel++ = color;
+        }
+        
+        row += bufferWidth;
+    }
+}
+
+#define TestBit(V, B) (((V) & (1 << (B))) != 0)
+
+void DrawSingleNumber(void *buffer, int bufferWidth, int bufferHeight, 
+                      int number, 
+                      int xOffset, int yOffset, 
+                      int width, int height,
+                      unsigned int color)
+{
+#define DIGIT_PIXELS_X 3
+#define DIGIT_PIXELS_Y 5
+    
+    int digitPixelWidth = width / DIGIT_PIXELS_X;
+    int digitPixelHeight = height / DIGIT_PIXELS_Y;
+    
+    static unsigned short numbers[10] = 
+    {
+        0x7B6F, 0x4924, 0x73E7, 0x79E7, 0x49ED, 0x79CF, 0x7BC9, 0x4927, 0x7BEF, 0x49EF
+    };
+    
+    for(int dy = 0;
+        dy < DIGIT_PIXELS_Y;
+        dy++)
+    {
+        for(int dx = 0;
+            dx < DIGIT_PIXELS_X;
+            dx++)
+        {
+            if(TestBit(numbers[number], (dx + dy * 3)))
+            {
+                int x = xOffset + dx * digitPixelWidth;
+                int y = yOffset - dy * digitPixelHeight;
+                
+                FillRectangle(buffer, bufferWidth, bufferHeight,
+                              x, y,
+                              digitPixelWidth, digitPixelHeight, 0xFFDDDDDD);
+            }
+        }
+    }
+}
+
+
+//------------------------------------------------------------------------------
 // Win32
 //------------------------------------------------------------------------------
 typedef BOOLEAN (* rtl_gen_random_proc) (PVOID RandomBuffer, ULONG RandomBufferLength);
@@ -106,89 +191,6 @@ ToggleFullscreen(HWND window)
     }
 }
 
-//------------------------------------------------------------------------------
-// Drawing
-//------------------------------------------------------------------------------
-void
-ClearScreenBuffer(win32_screenbuffer *screenbuffer, unsigned int color)
-{
-    unsigned int *pixel = (unsigned int *)screenbuffer->data;
-    unsigned int *end   = pixel + screenbuffer->width * screenbuffer->height;
-    
-    while(pixel != end)
-    {
-        *pixel++ = color;
-    }
-}
-
-void
-FillRectangle(win32_screenbuffer *screenbuffer, 
-              int x, int y, int w, int h,
-              unsigned int color)
-{
-    unsigned int minX = Clamp(0, x, screenbuffer->width);
-    unsigned int minY = Clamp(0, y, screenbuffer->height);
-    unsigned int maxX = Clamp(0, (x + w), screenbuffer->width);
-    unsigned int maxY = Clamp(0, (y + h), screenbuffer->height);
-    
-    unsigned int *row = (unsigned int *)screenbuffer->data + (minX + minY * screenbuffer->width);
-    
-    for(unsigned int y = minY;
-        y < maxY;
-        y++)
-    {
-        unsigned int *pixel = row;
-        
-        for(unsigned int x = minX;
-            x < maxX;
-            x++)
-        {
-            *pixel++ = color;
-        }
-        
-        row += screenbuffer->width;
-    }
-}
-
-#define TestBit(V, B) (((V) & (1 << (B))) != 0)
-
-void DrawSingleNumber(win32_screenbuffer *screenbuffer, 
-                      int i, 
-                      int xOffset, int yOffset, 
-                      int width, int height,
-                      unsigned int color)
-{
-#define DIGIT_PIXELS_X 3
-#define DIGIT_PIXELS_Y 5
-    
-    int digitPixelWidth = width / DIGIT_PIXELS_X;
-    int digitPixelHeight = height / DIGIT_PIXELS_Y;
-    
-    static unsigned short numbers[10] = 
-    {
-        0x7B6F, 0x4924, 0x73E7, 0x79E7, 0x49ED, 0x79CF, 0x7BC9, 0x4927, 0x7BEF, 0x49EF
-    };
-    
-    for(int dy = 0;
-        dy < DIGIT_PIXELS_Y;
-        dy++)
-    {
-        for(int dx = 0;
-            dx < DIGIT_PIXELS_X;
-            dx++)
-        {
-            if(TestBit(numbers[i], (dx + dy * 3)))
-            {
-                int x = xOffset + dx * digitPixelWidth;
-                int y = yOffset - dy * digitPixelHeight;
-                
-                FillRectangle(screenbuffer, 
-                              x, y,
-                              digitPixelWidth, digitPixelHeight, 0xFFDDDDDD);
-            }
-        }
-    }
-}
 
 
 //------------------------------------------------------------------------------
@@ -352,6 +354,17 @@ WindowProc(HWND window,
             RECT clientRect;
             GetClientRect(window, &clientRect);
             ResizeScreenBuffer(&screenbuffer, clientRect.right, clientRect.bottom);
+            ClearScreenBuffer(screenbuffer.data, screenbuffer.width, screenbuffer.height, 0xFF111111);
+        } break;
+        
+        case WM_SETCURSOR:
+        {
+            if(LOWORD(lParam) == HTCLIENT)
+            {
+                SetCursor(NULL);
+                result = 1;
+            }
+            
         } break;
         
         case WM_PAINT:
@@ -520,8 +533,6 @@ WinMainCRTStartup(void)
         //------------------------------------------------------------------------------
         // Draw Game
         //------------------------------------------------------------------------------
-        ClearScreenBuffer(&screenbuffer, 0xFF111111);
-        
         unsigned int tileSize = screenbuffer.height / state.map.height;
         unsigned int gameWidth = tileSize * state.map.width;
         unsigned int gameHeight = tileSize * state.map.height;
@@ -529,7 +540,7 @@ WinMainCRTStartup(void)
         unsigned int gameOffsetY = (screenbuffer.height - gameHeight) / 2;
         
         // Background
-        FillRectangle(&screenbuffer, gameOffsetX, gameOffsetY, gameWidth, gameHeight, 0xFF222222);
+        FillRectangle(screenbuffer.data, screenbuffer.width, screenbuffer.height, gameOffsetX, gameOffsetY, gameWidth, gameHeight, 0xFF222222);
         
         // Objects
         for(unsigned int tileIndex = 0;
@@ -544,7 +555,7 @@ WinMainCRTStartup(void)
                 unsigned int x = (tileIndex % state.map.width) * tileSize + gameOffsetX;
                 unsigned int y = (tileIndex / state.map.width) * tileSize + gameOffsetY;
                 
-                FillRectangle(&screenbuffer, x, y, tileSize, tileSize, color);
+                FillRectangle(screenbuffer.data, screenbuffer.width, screenbuffer.height, x, y, tileSize, tileSize, color);
             }
         }
         
@@ -564,7 +575,7 @@ WinMainCRTStartup(void)
         {
             int digit = score / power;
             
-            DrawSingleNumber(&screenbuffer, digit, digitXOffset, digitYOffset, digitWidth, digitHeight, 0xFFDDDDDD);
+            DrawSingleNumber(screenbuffer.data, screenbuffer.width, screenbuffer.height, digit, digitXOffset, digitYOffset, digitWidth, digitHeight, 0xFFDDDDDD);
             
             score %= power;
             power /= 10;
