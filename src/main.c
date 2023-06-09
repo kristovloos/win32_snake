@@ -11,6 +11,22 @@
 #define ArrayCount(a) (sizeof(a) / sizeof(a[0]))
 
 //------------------------------------------------------------------------------
+// Utility
+//------------------------------------------------------------------------------
+inline unsigned int
+Pow10U(unsigned int exp)
+{
+    unsigned int result = 1;
+    
+    while(exp--)
+    {
+        result *= 10;
+    }
+    
+    return result;
+}
+
+//------------------------------------------------------------------------------
 // Drawing
 //------------------------------------------------------------------------------
 void
@@ -57,7 +73,7 @@ FillRectangle(void *buffer, int bufferWidth, int bufferHeight,
 #define TestBit(V, B) (((V) & (1 << (B))) != 0)
 
 void DrawSingleNumber(void *buffer, int bufferWidth, int bufferHeight, 
-                      int number, 
+                      unsigned int number, 
                       int xOffset, int yOffset, 
                       int width, int height,
                       unsigned int color)
@@ -84,7 +100,7 @@ void DrawSingleNumber(void *buffer, int bufferWidth, int bufferHeight,
             if(TestBit(numbers[number], (dx + dy * 3)))
             {
                 int x = xOffset + dx * digitPixelWidth;
-                int y = yOffset - dy * digitPixelHeight;
+                int y = yOffset - dy * digitPixelHeight - digitPixelHeight;
                 
                 FillRectangle(buffer, bufferWidth, bufferHeight,
                               x, y,
@@ -197,14 +213,11 @@ ToggleFullscreen(HWND window)
 // Snake
 //------------------------------------------------------------------------------
 
-// Data
-//------------------------------------------------------------------------------
-
-
 // Config
 //------------------------------------------------------------------------------
-#define MAP_WIDTH 64
-#define MAP_HEIGHT 32
+#define SCORE_MAX_DIGITS 6
+#define MAP_WIDTH 15
+#define MAP_HEIGHT 15
 #define MAP_SIZE (MAP_WIDTH * MAP_HEIGHT)
 
 // State
@@ -233,10 +246,13 @@ typedef struct
     int snakeHeadIndex, snakeTailIndex;
     int snakeSegments[MAP_SIZE];
     
-    int score;
+    unsigned int score;
     
     int fruitPlaced;
+    int shouldGameOver;
     int gameOver;
+    int screenWrap;
+    int lsdMode;
     
     int currentFrame;
     int framesPerTick;
@@ -283,6 +299,7 @@ ResetGameState(snake_state *state)
     
     state->score = 0;
     state->fruitPlaced = 0;
+    state->shouldGameOver = 0;
     state->gameOver = 0;
     state->currentFrame = 0;
     state->framesPerTick = 5;
@@ -306,11 +323,32 @@ UpdateGameplay(snake_state *state)
     int snakeNewX = state->snakeX + state->snakeDirX;
     int snakeNewY = state->snakeY + state->snakeDirY;
     
+    if(state->screenWrap)
+    {
+        if(snakeNewX < 0)
+            snakeNewX = state->map.width + snakeNewX;
+        else if(snakeNewX >= state->map.width)
+            snakeNewX -= state->map.width;
+        
+        if(snakeNewY < 0)
+            snakeNewY = state->map.height + snakeNewY;
+        else if(snakeNewY >= state->map.height)
+            snakeNewY -= state->map.height;
+    }
+    
     int newTile = GetTileAt(&state->map, snakeNewX, snakeNewY);
     
     if(newTile == -1 || newTile == MAP_TILE_SNAKE)
     {
-        state->gameOver = 1;
+        if(!state->shouldGameOver)
+        {
+            state->shouldGameOver = 1;
+            return;
+        }
+        else
+        {
+            state->gameOver = 1;
+        }
     }
     else
     {
@@ -490,9 +528,34 @@ WinMainCRTStartup(void)
                             }
                         } break;
                         
-                        case VK_F12:
+                        case VK_F1:
+                        {
+                            if(state.framesPerTick > 1)
+                                state.framesPerTick--;
+                            
+                            state.currentFrame = 0;
+                            
+                        } break;
+                        
+                        case VK_F2:
+                        {
+                            state.framesPerTick++;
+                            state.currentFrame = 0;
+                        } break;
+                        
+                        case VK_F3:
+                        {
+                            state.screenWrap = !state.screenWrap;
+                        } break;
+                        
+                        case VK_F4:
                         {
                             ToggleFullscreen(window);
+                        } break;
+                        
+                        case VK_F5:
+                        {
+                            state.lsdMode = !state.lsdMode;
                         } break;
                         
                         case VK_ESCAPE:
@@ -547,7 +610,14 @@ WinMainCRTStartup(void)
         unsigned int gameOffsetY = (screenbuffer.height - gameHeight) / 2;
         
         // Background
-        FillRectangle(screenbuffer.data, screenbuffer.width, screenbuffer.height, gameOffsetX, gameOffsetY, gameWidth, gameHeight, 0xFF222222);
+        unsigned int mapColor = 0xFF222222;
+        
+        if(state.lsdMode)
+        {
+            RtlGenRandom(&mapColor, sizeof(unsigned int));
+        }
+        
+        FillRectangle(screenbuffer.data, screenbuffer.width, screenbuffer.height, gameOffsetX, gameOffsetY, gameWidth, gameHeight, mapColor);
         
         // Objects
         for(unsigned int tileIndex = 0;
@@ -559,6 +629,12 @@ WinMainCRTStartup(void)
             if(tile)
             {
                 unsigned int color = (tile == MAP_TILE_SNAKE) ? 0xFF555555 : 0xFFFF3300;
+                
+                if(state.lsdMode && tile == MAP_TILE_SNAKE)
+                {
+                    RtlGenRandom(&color, sizeof(unsigned int));
+                }
+                
                 unsigned int x = (tileIndex % state.map.width) * tileSize + gameOffsetX;
                 unsigned int y = (tileIndex / state.map.width) * tileSize + gameOffsetY;
                 
@@ -567,27 +643,29 @@ WinMainCRTStartup(void)
         }
         
         // Score
-        int digitWidth  = (tileSize / 10) * DIGIT_PIXELS_X;
-        int digitHeight = (tileSize / 10) * DIGIT_PIXELS_Y;
-        int digitXOffset = screenbuffer.width - gameOffsetX - (6 * digitWidth);
-        int digitYOffset = screenbuffer.height - gameOffsetY - digitHeight;
+        int digitWidth = (screenbuffer.width / 400) * DIGIT_PIXELS_X;
+        int digitHeight = (screenbuffer.width / 400) * DIGIT_PIXELS_Y;
+        int digitPadding = digitWidth / 4;
+        int digitXOffset = screenbuffer.width - gameOffsetX - ((SCORE_MAX_DIGITS) * (digitWidth + digitPadding)) + digitPadding;
+        int digitYOffset = screenbuffer.height - gameOffsetY;
+        int scoreMargin = digitHeight;
         
         
-        int power = 1000;
-        int score = state.score;
+        unsigned int power = Pow10U(SCORE_MAX_DIGITS - 1);
+        unsigned int score = state.score;
         
         for(int place = 0;
-            place < 4;
+            place < SCORE_MAX_DIGITS;
             place++)
         {
-            int digit = score / power;
+            unsigned int digit = score / power;
             
-            DrawSingleNumber(screenbuffer.data, screenbuffer.width, screenbuffer.height, digit, digitXOffset, digitYOffset, digitWidth, digitHeight, 0xFFDDDDDD);
+            DrawSingleNumber(screenbuffer.data, screenbuffer.width, screenbuffer.height, digit, digitXOffset - scoreMargin, digitYOffset - scoreMargin, digitWidth, digitHeight, 0xFFDDDDDD);
             
             score %= power;
             power /= 10;
             
-            digitXOffset += digitWidth + digitWidth / 4;
+            digitXOffset += digitWidth + digitPadding;
         }
         
         DisplayScreenBuffer(dc, &screenbuffer);
