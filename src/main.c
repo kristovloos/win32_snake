@@ -55,13 +55,13 @@ FillRectangle(void *buffer, int bufferWidth, int bufferHeight,
     
     for(unsigned int by = minY;
         by < maxY;
-        y++)
+        by++)
     {
         unsigned int *pixel = row;
         
         for(unsigned int bx = minX;
             bx < maxX;
-            x++)
+            bx++)
         {
             *pixel++ = color;
         }
@@ -431,7 +431,6 @@ WindowProc(HWND window,
 void
 WinMainCRTStartup(void)
 {
-    
     //------------------------------------------------------------------------------
     // Create Window
     //------------------------------------------------------------------------------
