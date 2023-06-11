@@ -72,6 +72,39 @@ FillRectangle(void *buffer, int bufferWidth, int bufferHeight,
 
 #define TestBit(V, B) (((V) & (1 << (B))) != 0)
 
+#include "ibm_bios.h"
+
+void DrawASCII(void *buffer, int bufferWidth, int bufferHeight,
+               unsigned char character, 
+               int x, int y, int width, int height,
+               unsigned int color)
+{
+    int digitPixelWidth = width / fontGlyphWidth;
+    int digitPixelHeight = height / fontGlyphHeight;
+    
+    unsigned char *currentByte = fontData + character;
+    
+    for(int dy = 0;
+        dy < fontGlyphHeight;
+        dy++)
+    {
+        for(int dx = 0;
+            dx < fontGlyphWidth;
+            dx++)
+        {
+            if(TestBit(*currentByte, dx))
+            {
+                FillRectangle(buffer, bufferWidth, bufferHeight,
+                              x + dx * digitPixelWidth, 
+                              y - dy * digitPixelHeight - digitPixelHeight,
+                              digitPixelWidth, digitPixelHeight, color);
+            }
+        }
+        
+        currentByte += 256;
+    }
+}
+
 void DrawSingleNumber(void *buffer, int bufferWidth, int bufferHeight, 
                       unsigned int number, 
                       int xOffset, int yOffset, 
@@ -476,6 +509,8 @@ WinMainCRTStartup(void)
     LARGE_INTEGER freq;
     QueryPerformanceFrequency(&freq);
     
+    unsigned char test = 0;
+    
     while(running)
     {
         LARGE_INTEGER begin;
@@ -560,6 +595,11 @@ WinMainCRTStartup(void)
                         case VK_ESCAPE:
                         {
                             running = 0;
+                        } break;
+                        
+                        case VK_SPACE:
+                        {
+                            test++;
                         } break;
                     }
                 } break;
@@ -659,7 +699,9 @@ WinMainCRTStartup(void)
         {
             unsigned int digit = score / power;
             
-            DrawSingleNumber(screenbuffer.data, screenbuffer.width, screenbuffer.height, digit, digitXOffset - scoreMargin, digitYOffset - scoreMargin, digitWidth, digitHeight, 0xFFDDDDDD);
+            //DrawSingleNumber(screenbuffer.data, screenbuffer.width, screenbuffer.height, digit, digitXOffset - scoreMargin, digitYOffset - scoreMargin, digitWidth, digitHeight, 0xFFDDDDDD);
+            DrawASCII(screenbuffer.data, screenbuffer.width, screenbuffer.height, 
+                      test, digitXOffset - scoreMargin, digitYOffset - scoreMargin, digitWidth, digitHeight, 0xFFDDDDDD);
             
             score %= power;
             power /= 10;
