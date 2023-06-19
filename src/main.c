@@ -375,16 +375,6 @@ WindowProc(HWND window,
             ClearScreenBuffer(screenbuffer.data, screenbuffer.width, screenbuffer.height, 0xFF111111);
         } break;
         
-        case WM_SETCURSOR:
-        {
-            if(LOWORD(lParam) == HTCLIENT)
-            {
-                SetCursor(NULL);
-                result = 1;
-            }
-            
-        } break;
-        
         case WM_PAINT:
         {
             PAINTSTRUCT ps;
@@ -403,7 +393,6 @@ WindowProc(HWND window,
             result = DefWindowProc(window, message, wParam, lParam);
         }
     }
-    
     
     return result;
 }
