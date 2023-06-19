@@ -11,22 +11,6 @@
 #define ArrayCount(a) (sizeof(a) / sizeof(a[0]))
 
 //------------------------------------------------------------------------------
-// Utility
-//------------------------------------------------------------------------------
-inline unsigned int
-Pow10U(unsigned int exp)
-{
-    unsigned int result = 1;
-    
-    while(exp--)
-    {
-        result *= 10;
-    }
-    
-    return result;
-}
-
-//------------------------------------------------------------------------------
 // Drawing
 //------------------------------------------------------------------------------
 void
@@ -71,39 +55,6 @@ FillRectangle(void *buffer, int bufferWidth, int bufferHeight,
 }
 
 #define TestBit(V, B) (((V) & (1 << (B))) != 0)
-
-#include "ibm_bios.h"
-
-void DrawASCII(void *buffer, int bufferWidth, int bufferHeight,
-               unsigned char character, 
-               int x, int y, int width, int height,
-               unsigned int color)
-{
-    int digitPixelWidth = width / fontGlyphWidth;
-    int digitPixelHeight = height / fontGlyphHeight;
-    
-    unsigned char *currentByte = fontData + character;
-    
-    for(int dy = 0;
-        dy < fontGlyphHeight;
-        dy++)
-    {
-        for(int dx = 0;
-            dx < fontGlyphWidth;
-            dx++)
-        {
-            if(TestBit(*currentByte, dx))
-            {
-                FillRectangle(buffer, bufferWidth, bufferHeight,
-                              x + dx * digitPixelWidth, 
-                              y - dy * digitPixelHeight - digitPixelHeight,
-                              digitPixelWidth, digitPixelHeight, color);
-            }
-        }
-        
-        currentByte += 256;
-    }
-}
 
 void DrawSingleNumber(void *buffer, int bufferWidth, int bufferHeight, 
                       unsigned int number, 
@@ -241,6 +192,75 @@ ToggleFullscreen(HWND window)
 }
 
 
+//------------------------------------------------------------------------------
+// File IO
+//------------------------------------------------------------------------------
+typedef struct
+{
+    unsigned int error;
+    unsigned int size;
+    void *data;
+    
+} loaded_file;
+
+loaded_file
+Win32_LoadFile(char *path)
+{
+    loaded_file result = {0};
+    
+    HANDLE file = CreateFile(path, 
+                             GENERIC_READ, 
+                             0, NULL, 
+                             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 
+                             NULL);
+    
+    if(file != INVALID_HANDLE_VALUE)
+    {
+        DWORD fileSize = GetFileSize(file, 0);
+        void *dest = VirtualAlloc(0, fileSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+        
+        if(dest)
+        {
+            DWORD bytesRead;
+            
+            if(ReadFile(file, dest, fileSize, &bytesRead, 0) && 
+               bytesRead == fileSize)
+            {
+                result.size = fileSize;
+                result.data = dest;
+            }
+            else
+            {
+                VirtualFree(dest, 0, MEM_RELEASE);
+                result.error = GetLastError();
+            }
+        }
+        else
+        {
+            result.error = GetLastError();
+        }
+        
+        CloseHandle(file);
+    }
+    else
+    {
+        result.error = GetLastError();
+    }
+    
+    return result;
+    
+}
+
+void
+Win32_FreeFile(loaded_file *file)
+{
+    if(file && file->data)
+    {
+        VirtualFree(file->data, 0, MEM_RELEASE);
+        file->size = 0;
+    }
+}
+
 
 //------------------------------------------------------------------------------
 // Snake
@@ -248,10 +268,8 @@ ToggleFullscreen(HWND window)
 
 // Config
 //------------------------------------------------------------------------------
-#define SCORE_MAX_DIGITS 6
 #define MAP_WIDTH 15
 #define MAP_HEIGHT 15
-#define MAP_SIZE (MAP_WIDTH * MAP_HEIGHT)
 
 // State
 //------------------------------------------------------------------------------
@@ -266,7 +284,7 @@ typedef struct
 {
     int width;
     int height;
-    map_tile tiles[MAP_SIZE];
+    map_tile tiles[MAP_WIDTH * MAP_HEIGHT];
     
 } snake_map;
 
@@ -277,7 +295,7 @@ typedef struct
     int snakeRequestedDirX, snakeRequestedDirY;
     
     int snakeHeadIndex, snakeTailIndex;
-    int snakeSegments[MAP_SIZE];
+    int snakeSegments[MAP_WIDTH * MAP_HEIGHT];
     
     unsigned int score;
     
@@ -509,8 +527,6 @@ WinMainCRTStartup(void)
     LARGE_INTEGER freq;
     QueryPerformanceFrequency(&freq);
     
-    unsigned char test = 0;
-    
     while(running)
     {
         LARGE_INTEGER begin;
@@ -596,11 +612,6 @@ WinMainCRTStartup(void)
                         {
                             running = 0;
                         } break;
-                        
-                        case VK_SPACE:
-                        {
-                            test++;
-                        } break;
                     }
                 } break;
                 
@@ -685,29 +696,22 @@ WinMainCRTStartup(void)
         int digitWidth = (screenbuffer.width / 400) * DIGIT_PIXELS_X;
         int digitHeight = (screenbuffer.width / 400) * DIGIT_PIXELS_Y;
         int digitPadding = digitWidth / 4;
-        int digitXOffset = screenbuffer.width - gameOffsetX - ((SCORE_MAX_DIGITS) * (digitWidth + digitPadding)) + digitPadding;
+        int digitXOffset = screenbuffer.width - gameOffsetX - digitWidth;
         int digitYOffset = screenbuffer.height - gameOffsetY;
         int scoreMargin = digitHeight;
         
-        
-        unsigned int power = Pow10U(SCORE_MAX_DIGITS - 1);
         unsigned int score = state.score;
         
-        for(int place = 0;
-            place < SCORE_MAX_DIGITS;
-            place++)
+        do
         {
-            unsigned int digit = score / power;
+            unsigned int digit = score % 10;
+            score /= 10;
             
-            //DrawSingleNumber(screenbuffer.data, screenbuffer.width, screenbuffer.height, digit, digitXOffset - scoreMargin, digitYOffset - scoreMargin, digitWidth, digitHeight, 0xFFDDDDDD);
-            DrawASCII(screenbuffer.data, screenbuffer.width, screenbuffer.height, 
-                      test, digitXOffset - scoreMargin, digitYOffset - scoreMargin, digitWidth, digitHeight, 0xFFDDDDDD);
+            DrawSingleNumber(screenbuffer.data, screenbuffer.width, screenbuffer.height, digit, digitXOffset - scoreMargin, digitYOffset - scoreMargin, digitWidth, digitHeight, 0xFFDDDDDD);
             
-            score %= power;
-            power /= 10;
+            digitXOffset -= digitWidth + digitPadding;
             
-            digitXOffset += digitWidth + digitPadding;
-        }
+        } while(score);
         
         DisplayScreenBuffer(dc, &screenbuffer);
         
